@@ -1,0 +1,62 @@
+.demo-container {
+  display: flex;
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.demo-controls {
+  flex: 0 0 300px;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  height: fit-content;
+}
+
+.demo-controls h3 {
+  margin: 0 0 1rem 0;
+  color: #1a1a1a;
+  font-size: 1.2rem;
+}
+
+.control-group {
+  margin-bottom: 1rem;
+}
+
+.control-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.control-group select,
+.control-group input[type="number"] {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.control-group input[type="checkbox"] {
+  margin-right: 0.5rem;
+}
+
+.demo-chatbot {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .demo-container {
+    flex-direction: column;
+    padding: 1rem;
+  }
+  
+  .demo-controls {
+    flex: none;
+  }
+}
