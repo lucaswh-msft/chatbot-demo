@@ -1,4 +1,5 @@
 import { ChatMessageRequest, ChatMessageResponse } from '../components/chatbot/types';
+import { createBasaltAdapterService } from './basaltAdapterAPI';
 
 // Mock responses for development
 const mockResponses = [
@@ -70,7 +71,6 @@ export const createAPIService = (config: any) => {
     return new MockChatAPIService();
   }
   
-  // Use the real API service
-  const { ChatAPIService } = require('./chatAPI');
-  return new ChatAPIService(config);
+  // Use the Basalt adapter as the real API service
+  return createBasaltAdapterService(config);
 };
