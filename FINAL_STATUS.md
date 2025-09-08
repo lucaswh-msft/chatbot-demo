@@ -7,7 +7,7 @@ The Chatbot MVP has been successfully built and is fully operational. All errors
 ## 🚀 **What's Working**
 
 ### ✅ **Development Server**
-- **Running at**: `http://localhost:3000`
+- **Running at**: `http://localhost:3001`
 - **Status**: ✅ ACTIVE
 - **Features**: Hot reload, error overlay, development tools
 
@@ -71,7 +71,7 @@ The Chatbot MVP has been successfully built and is fully operational. All errors
 ### **Start Development**
 ```bash
 npm start
-# Opens http://localhost:3000
+# Opens http://localhost:3001
 ```
 
 ### **Run Tests**

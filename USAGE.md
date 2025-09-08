@@ -12,7 +12,7 @@ npm install
 npm start
 ```
 
-The application will open at [http://localhost:3000](http://localhost:3000).
+The application will open at [http://localhost:3001](http://localhost:3001).
 
 ### 2. Basic Integration
 
@@ -264,7 +264,7 @@ COPY package*.json ./
 RUN npm ci --only=production
 COPY . .
 RUN npm run build
-EXPOSE 3000
+EXPOSE 3001
 CMD ["npm", "start"]
 ```
 

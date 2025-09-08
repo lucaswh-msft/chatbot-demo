@@ -1025,7 +1025,7 @@ const useDebugKeyboardShortcuts = (debugActions: DebugActions) => {
 />
 
 // Access debug panel with URL parameter
-// http://localhost:3000/chat?debug=true
+// http://localhost:3001/chat?debug=true
 
 // Or activate with keyboard shortcut: Ctrl+Shift+D
 ```
