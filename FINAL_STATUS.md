@@ -132,7 +132,7 @@ Time: ~3.7s
 
 ### **Environment Variables** (.env)
 ```env
-REACT_APP_CHAT_API_ENDPOINT=http://localhost:8000/api/chat
+REACT_APP_CHAT_API_ENDPOINT=http://localhost:8001/api/chat
 REACT_APP_USE_REAL_API=false
 REACT_APP_ENABLE_STREAMING=false
 REACT_APP_MAX_MESSAGES=100

@@ -120,7 +120,7 @@ python -m venv .venv
 pip install -r backend/requirements.txt
 
 # Run development server
-uvicorn backend.main:app --reload --port 3002
+uvicorn backend.main:app --reload --port 8001
 ```
 
 #### API Endpoints

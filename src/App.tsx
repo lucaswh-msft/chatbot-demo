@@ -9,7 +9,7 @@ function App() {
   // Use mock API for development unless explicitly set to use real API
   const useRealAPI = process.env.REACT_APP_USE_REAL_API === 'true';
   const apiEndpoint = useRealAPI 
-    ? (process.env.REACT_APP_CHAT_API_ENDPOINT || 'http://localhost:8000/api/chat')
+    ? (process.env.REACT_APP_CHAT_API_ENDPOINT || 'http://localhost:8001/api/chat')
     : 'mock://api/chat'; // Special mock endpoint
 
   const handleMessageSent = (message: string) => {

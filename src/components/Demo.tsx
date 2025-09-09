@@ -54,7 +54,7 @@ export const Demo: React.FC = () => {
 
       <div className="demo-chatbot">
         <ChatBot
-          apiEndpoint="http://localhost:8000/api/chat"
+          apiEndpoint="http://localhost:8001/api/chat"
           theme={theme}
           streamResponses={streaming}
           maxInputLength={maxLength}
