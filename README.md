@@ -56,10 +56,10 @@ pip install -r backend/requirements.txt
 
 ```bash
 # Start FastAPI development server
-uvicorn backend.main:app --reload --port 3002
+uvicorn backend.main:app --reload --port 8001
 ```
 
-The API will be available at [http://localhost:3002](http://localhost:3002).
+The API will be available at [http://localhost:8001](http://localhost:8001).
 
 ### Environment Configuration
 
@@ -67,11 +67,19 @@ Create a `.env` file in the root directory with the following settings:
 
 ```env
 # Frontend Configuration
-REACT_APP_CHAT_API_ENDPOINT=http://localhost:3002
+REACT_APP_CHAT_API_ENDPOINT=http://localhost:8001
 REACT_APP_ENABLE_STREAMING=false
 REACT_APP_MAX_MESSAGES=100
 REACT_APP_USE_REAL_API=true
 PORT=3001
+```
+
+Note: canonical ports used in this repository
+- Frontend development server: http://localhost:3001 (set PORT=3001 in your .env)
+- Backend API (uvicorn): http://localhost:8001 — start with:
+
+```bash
+uvicorn backend.main:app --reload --port 8001
 ```
 
 ## Usage
@@ -84,7 +92,7 @@ import { ChatBot } from './components/chatbot';
 function App() {
   return (
     <ChatBot
-      apiEndpoint="http://localhost:8000/api/chat"
+      apiEndpoint="http://localhost:8001/api/chat"
       theme="light"
       placeholder="Type your message..."
       height="600px"
@@ -141,7 +149,7 @@ const CustomRenderer = (message: ChatMessageType) => (
 function App() {
   return (
     <ChatBot
-      apiEndpoint="http://localhost:8000/api/chat"
+      apiEndpoint="http://localhost:8001/api/chat"
       customMessageRenderer={CustomRenderer}
     />
   );
@@ -156,7 +164,7 @@ Create a `.env` file in the root directory:
 
 ```env
 # Chatbot Configuration
-REACT_APP_CHAT_API_ENDPOINT=http://localhost:3002
+REACT_APP_CHAT_API_ENDPOINT=http://localhost:8001
 REACT_APP_ENABLE_STREAMING=false
 REACT_APP_MAX_MESSAGES=100
 REACT_APP_ENABLE_ANALYTICS=false

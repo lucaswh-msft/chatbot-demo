@@ -23,7 +23,7 @@ jest.mock('../../services/mockAPI', () => ({
 }));
 
 const defaultProps = {
-  apiEndpoint: 'http://localhost:8000/api/chat',
+  apiEndpoint: 'http://localhost:8001/api/chat',
   theme: 'light' as const,
   placeholder: 'Type a message...',
   height: '600px'
