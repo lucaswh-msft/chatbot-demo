@@ -421,6 +421,25 @@ Send a message and get a response.
 }
 ```
 
+### LLM Backend (Azure OpenAI)
+
+The backend can optionally use Azure OpenAI to generate assistant responses for the `/services/conversation/web/api/v1/unified-chat/caip/message` endpoint.
+
+To enable the LLM integration, create a `backend/.env` file with the following variables (use your real key instead of the placeholder):
+
+```env
+AZURE_OPENAI_ENDPOINT=https://fde-prompt-evals.cognitiveservices.azure.com/
+AZURE_OPENAI_KEY=<your-api-key>
+AZURE_OPENAI_DEPLOYMENT=gpt-4.1-mini
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
+```
+
+Notes:
+
+- The backend automatically loads `backend/.env` at startup using `python-dotenv`, so you do not need to export these vars manually when running the app via `uvicorn backend.main:app`.
+- Make sure `python-dotenv` and `openai` are installed in the backend virtual environment (`backend/requirements.txt` includes these packages).
+- If the LLM environment is not configured or a request to the model fails, the API will gracefully fall back to the original echo-style response (so the chatbot remains functional without the LLM).
+
 ### Streaming Support
 
 The chatbot component supports streaming responses, but the backend API doesn't natively support streaming. The `basaltAdapterAPI.ts` service provides a compatibility layer that simulates streaming by chunking the full response.
