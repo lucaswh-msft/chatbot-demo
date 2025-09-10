@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Body, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 from datetime import datetime
@@ -15,11 +16,34 @@ origins = [
 ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"], # Instead of specific origins, allow all for demo purposes
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Dynamic CORS middleware for demo - reflect incoming Origin
+class DynamicCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        origin = request.headers.get("origin")
+
+        # Short-circuit preflight requests so they get a 200
+        if request.method == "OPTIONS":
+            response = Response(status_code=200)
+        else:
+            response: Response = await call_next(request)
+
+        # Only add CORS headers if an Origin header was provided
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = (
+                request.headers.get("access-control-request-headers", "*")
+            )
+        return response
+
+app.add_middleware(DynamicCORSMiddleware)
 
 # --- Shared Schemas ---
 class Memberships(BaseModel):
@@ -126,15 +150,121 @@ class MessageResponse(BaseModel):
 # --- API Endpoints ---
 @app.post("/services/conversation/web/api/v1/unified-chat/caip/init")
 async def init_chat(payload: InitRequest = Body(...)):
-    # Minimal state echo; a real impl would create a conversation record
-    return {"status": "chat_initialized", "conversationId": payload.caipConversationId or "conv_mock"}
+    # Hardcoded basalt \init response for demo purposes
+    return {
+        "body": {
+            "contents": [
+                {
+                    "dataType": "text",
+                    "data": {
+                        "type": "Text",
+                        "displayText": " Hi, I'm Microsoft FDE's chatbot! What can I help you with?",
+                        "hyperlinks": [],
+                        "options": [],
+                        "dynamicText": [
+                            {
+                                "type": "DynamicText",
+                                "textData": [
+                                    {
+                                        "type": "TextOption",
+                                        "displayText": "Hi, I'm Microsoft FDE's chatbot!"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "DynamicText",
+                                "textData": [
+                                    {
+                                        "type": "TextOption",
+                                        "displayText": "What can I help you with?"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ],
+            "turnId": 0,
+            "metadata": {
+                "more": {
+                    "membershipState": "No",
+                    "logInState": "loggedOut",
+                    "referer": "",
+                    "botSource": "dfcx",
+                    "prevUtterance": "Hello",
+                    "requestedProductDataType": "",
+                    "intentName": "Default Welcome Intent",
+                    "prevResponse": "[{\"type\": \"Text\", \"displayText\": \" Hi, I'm Microsoft FDE's chatbot! What can I help you with?\", \"hyperlinks\": [], \"options\": [], \"dynamicText\": [{\"type\": \"DynamicText\", \"textData\": [{\"type\": \"TextOption\", \"displayText\": \"Hi, I'm Microsoft FDE's chatbot!\"}]}, {\"type\": \"DynamicText\", \"textData\": [{\"type\": \"TextOption\", \"displayText\": \"What can I help you with?\"}]}]}]"
+                },
+                "correlationId": "a0b0654b-fab5-4a41-8e5a-df13f7b7d0dc",
+                "conversationId": "77670569-5b9e-4da2-a472-253d7dbe029e",
+                "genAI": False
+            }
+        },
+        "escapeHatch": {
+            "showEscapeHatch": True,
+            "provider": "twilio",
+            "queue": "care.postpurchasesupport.en.chat.all",
+            "pillar": "care",
+            "channel": "chat"
+        }
+    }
 
-@app.post("/services/conversation/web/api/v1/unified-chat/caip/message", response_model=MessageResponse)
+@app.post("/services/conversation/web/api/v1/unified-chat/caip/message")
 async def send_message(payload: MessageRequest = Body(...)):
-    # Simple echo response
-    return MessageResponse(messages=[
-        BotMessage(type="Text", displayText=f"Echo: {payload.message.message}")
-    ])
+    # Echo input into Basalt-like response schema
+    user_text = payload.message.message or ""
+    display = f"ECHO BACK {user_text}"
+    return {
+        "body": {
+            "contents": [
+                {
+                    "dataType": "text",
+                    "data": {
+                        "type": "Text",
+                        "displayText": display,
+                        "hyperlinks": [],
+                        "options": [],
+                        "dynamicText": [
+                            {
+                                "type": "DynamicText",
+                                "textData": [
+                                    {
+                                        "type": "TextOption",
+                                        "displayText": display
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ],
+            "turnId": payload.message.turnId,
+            "metadata": {
+                "more": {
+                    "membershipState": payload.message.metadata.more.membershipState or "No",
+                    "logInState": payload.message.metadata.more.logInState or "loggedOut",
+                    "referer": payload.message.metadata.more.referer or "",
+                    "botSource": payload.message.metadata.more.botSource or "dfcx",
+                    "prevUtterance": payload.message.metadata.more.prevUtterance or "",
+                    "requestedProductDataType": payload.message.metadata.more.requestedProductDataType or "",
+                    "existingUtterance": payload.message.metadata.more.existingUtterance or "",
+                    "intentName": payload.message.metadata.more.intentName or "Default Welcome Intent",
+                    "prevResponse": payload.message.metadata.more.prevResponse or "[{\"type\": \"Text\", \"displayText\": \" What was that?\", \"hyperlinks\": [], \"options\": [], \"dynamicText\": [{\"type\": \"DynamicText\", \"textData\": [{\"type\": \"TextOption\", \"displayText\": \"What was that?\"}]}]}]"
+                },
+                "correlationId": payload.message.metadata.correlationId,
+                "conversationId": payload.message.metadata.conversationId,
+                "genAI": False
+            }
+        },
+        "escapeHatch": {
+            "showEscapeHatch": True,
+            "provider": "twilio",
+            "queue": "care.postpurchasesupport.en.chat.all",
+            "pillar": "care",
+            "channel": "chat"
+        }
+    }
 
 @app.get("/health")
 async def health():
