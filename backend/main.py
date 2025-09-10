@@ -4,6 +4,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from backend/.env so AZURE_OPENAI_* values are available
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 
 app = FastAPI(title="Basalt Chatbot API", version="1.0.0")
 
@@ -212,9 +217,34 @@ async def init_chat(payload: InitRequest = Body(...)):
 
 @app.post("/services/conversation/web/api/v1/unified-chat/caip/message")
 async def send_message(payload: MessageRequest = Body(...)):
-    # Echo input into Basalt-like response schema
+    # Integrate with Azure OpenAI (via the lightweight wrapper in openai_client.py).
+    # If the OpenAI client isn't configured or the call fails, fall back to the original echo response.
     user_text = payload.message.message or ""
-    display = f"ECHO BACK {user_text}"
+    display = f"ECHO1 {user_text}"
+
+    try:
+        # support importing the wrapper both as a top-level module and as a package-relative module
+        try:
+            from openai_client import OpenAIClient
+        except Exception:
+            from .openai_client import OpenAIClient
+
+        client = OpenAIClient()
+        ai_reply = client.chat_completion(
+            user_message=user_text,
+            system_instruction="You are a helpful assistant.",
+            max_tokens=512,
+            temperature=1.0,
+            top_p=1.0,
+        )
+
+        if ai_reply:
+            display = ai_reply.strip()
+    except Exception as ex:
+        # If anything goes wrong (missing env vars, network, library), gracefully fallback to echo.
+        print(ex)
+        display = f"ECHO2 {user_text}"
+
     return {
         "body": {
             "contents": [
