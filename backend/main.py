@@ -243,7 +243,7 @@ async def send_message(payload: MessageRequest = Body(...)):
     except Exception as ex:
         # If anything goes wrong (missing env vars, network, library), gracefully fallback to echo.
         print(ex)
-        display = f"ECHO BACK2 {user_text}"
+        display = f"ECHO2 {user_text}"
 
     return {
         "body": {
