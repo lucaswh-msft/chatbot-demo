@@ -6,6 +6,7 @@ from typing import List, Optional, Dict
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+import json
 
 # Load environment variables from backend/.env so AZURE_OPENAI_* values are available
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
@@ -49,6 +50,53 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(DynamicCORSMiddleware)
+
+# Store the most recent product payload posted to /product so /message can augment user input
+product_info = None
+
+def extract_specification_groups_from_text(text: str) -> List[str]:
+    """Search the provided text for occurrences of the exact substring
+    '"specificationGroups": [{' and for each occurrence return the full JSON
+    array string by scanning forward and counting brackets until the matching
+    closing bracket for the array is found.
+    """
+    results: List[str] = []
+    # Match the exact escaped sequence: "specificationGroups":[{
+    search_term = '"specificationGroups":[{'
+    start = 0
+    n = len(text)
+    while True:
+        idx = text.find(search_term, start)
+        if idx == -1:
+            break
+
+        # Find the '[' that begins the array; start scanning from that position
+        array_start = text.find('[', idx)
+        if array_start == -1:
+            # malformed, give up for this occurrence
+            start = idx + len(search_term)
+            continue
+
+        i = array_start
+        bracket_count = 0
+        # Walk forward counting brackets until the top-level array is closed
+        while i < n:
+            ch = text[i]
+            if ch == '[':
+                bracket_count += 1
+            elif ch == ']':
+                bracket_count -= 1
+                if bracket_count == 0:
+                    # capture the array from '[' .. ']' inclusive
+                    results.append(text[array_start:i+1])
+                    start = i + 1
+                    break
+            i += 1
+        else:
+            # Reached end of text without closing bracket; stop searching
+            break
+
+    return results
 
 # --- Shared Schemas ---
 class Memberships(BaseModel):
@@ -215,11 +263,86 @@ async def init_chat(payload: InitRequest = Body(...)):
         }
     }
 
+@app.post("/product")
+async def product_hook(request: Request):
+    """Receive and persist the latest product payload for later augmentation of user messages.
+
+    This endpoint stores an aggregation of any found `specificationGroups` arrays into
+    the module-level `product_info` variable and logs a short snippet for debugging.
+    """
+    # Read raw body as text first; payload might not be valid JSON
+    raw_bytes = await request.body()
+    payload_text = raw_bytes.decode("utf-8", errors="replace")
+
+    # Try to parse JSON to extract friendly fields for logging, but tolerate failures
+    try:
+        payload_obj = json.loads(payload_text)
+    except Exception:
+        payload_obj = None
+
+    original_url = payload_obj.get("originalUrl") if isinstance(payload_obj, dict) else None
+    response_body = payload_obj.get("responseBody") if isinstance(payload_obj, dict) else None
+
+    print("Got product:", original_url)
+    if isinstance(response_body, str):
+        print("Response body:", response_body[:200], "...")
+    else:
+        # fall back to a short raw-body snippet for debugging
+        print("Response body (fallback):", payload_text[:200], "...")
+
+    # Dump response_body and full payload to a debug file for offline inspection
+    # # try:
+    # #     debug_path = os.path.join(os.path.dirname(__file__), "product_debug.txt")
+    # #     with open(debug_path, "a", encoding="utf-8") as dbg:
+    # #         dbg.write("---\n")
+    # #         dbg.write(f"timestamp: {datetime.utcnow().isoformat()}\n")
+    # #         dbg.write(f"originalUrl: {original_url}\n")
+    # #         dbg.write("--- response_body START ---\n")
+    # #         dbg.write((response_body if isinstance(response_body, str) else "<None or non-string>") + "\n")
+    # #         dbg.write("--- response_body END ---\n")
+    # #         dbg.write("--- full payload START ---\n")
+    # #         dbg.write(payload_text + "\n")
+    # #         dbg.write("--- full payload END ---\n\n")
+    # # except Exception as e:
+    # #     print("Failed to write product debug file:", e)
+
+    # Extract all specificationGroups arrays found in the raw payload text
+    specification_group_array_strings = extract_specification_groups_from_text(response_body or payload_text)
+    print(f"Found {len(specification_group_array_strings)} specificationGroups arrays")
+
+    global product_info
+    # Join array-string captures into a single string per the requested behavior
+    product_info = ",".join(specification_group_array_strings)
+
+    return {"status": "received"}
+
 @app.post("/services/conversation/web/api/v1/unified-chat/caip/message")
 async def send_message(payload: MessageRequest = Body(...)):
     # Integrate with Azure OpenAI (via the lightweight wrapper in openai_client.py).
     # If the OpenAI client isn't configured or the call fails, fall back to the original echo response.
     user_text = payload.message.message or ""
+
+    global product_info
+
+    # If a product payload has been previously posted to /product, augment the user's text
+    # with a brief excerpt of that product information to help the AI provide context-aware replies.
+    if product_info:
+        user_text = f"Question:\n{user_text} \n\n Product Info:\n{product_info}"
+    else:
+        print("No product info available to augment user message. Falling back to backend/assets/test_product1.txt for demo.")
+        try:
+            sample_path = os.path.join(os.path.dirname(__file__), "assets", "test_product1.txt")
+            with open(sample_path, "r", encoding="utf-8") as f:
+                sample_text = f.read()
+            specification_group_array_strings = extract_specification_groups_from_text(sample_text)
+            print(f"Fallback: found {len(specification_group_array_strings)} specificationGroups arrays in test_product1.txt")
+            if specification_group_array_strings:
+                product_info = ",".join(specification_group_array_strings)
+                user_text = f"Question:\n{user_text} \n\n Product Info:\n{product_info}"
+            else:
+                print("Fallback: no specificationGroups found in test_product1.txt")
+        except Exception as e:
+            print("Fallback reading test_product1.txt failed:", e)
     display = f"ECHO1 {user_text}"
 
     try:
