@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Body, Request, Response
+from fastapi import FastAPI, Body, Request, Response, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field
@@ -6,6 +6,8 @@ from typing import List, Optional, Dict
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from urllib.parse import urlparse, parse_qs, unquote_plus
+from fastapi.responses import JSONResponse
 
 # Load environment variables from backend/.env so AZURE_OPENAI_* values are available
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
@@ -13,15 +15,10 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 app = FastAPI(title="Basalt Chatbot API", version="1.0.0")
 
 # CORS for local React dev server
-origins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:3001",
-]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Instead of specific origins, allow all for demo purposes
+    allow_origins=["*"],  # Instead of specific origins, allow all for demo purposes
+    allow_origin_regex=r"^http://localhost(:\d+)?$",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,6 +46,62 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(DynamicCORSMiddleware)
+
+# In-memory store for captured product pages
+product_store: Dict[str, Dict] = {}
+
+# Helper to extract product id from a URL
+def _extract_product_id_from_url(full_url: str) -> str:
+    parsed = urlparse(full_url)
+    path_segments = [seg for seg in parsed.path.split("/") if seg]
+    if not path_segments:
+        raise ValueError("Unable to extract product id from url")
+    return path_segments[-1]
+
+
+@app.get("/track/pageview", status_code=status.HTTP_204_NO_CONTENT)
+async def track_pageview(request: Request):
+    """Capture the raw HTML of a product page from the 'url' query param in the request.
+
+    This endpoint intentionally ignores all other query parameters (e.g., Contentsquare beacons)
+    and only extracts the 'url' parameter from the raw query string (percent-decoded).
+    """
+    # Extract the raw query string bytes and percent-decode/parse it ourselves so we
+    # only pay attention to the 'url' key and ignore any other parameters.
+    raw_qs = request.scope.get("query_string", b"").decode("utf-8", errors="ignore")
+    qs = parse_qs(raw_qs, keep_blank_values=True)
+    url_values = qs.get("url")
+
+    if not url_values or not url_values[0]:
+        return JSONResponse(status_code=400, content={"error": "Missing 'url' query parameter."})
+
+    decoded_url = unquote_plus(url_values[0])
+
+    parsed = urlparse(decoded_url)
+    if not parsed.scheme or not parsed.netloc:
+        return JSONResponse(status_code=400, content={"error": "Invalid 'url' parameter. Expected absolute URL."})
+
+    try:
+        product_id = _extract_product_id_from_url(decoded_url)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "Unable to determine product id from the provided URL."})
+
+    # Do not attempt to fetch external HTML from the provided URL (blocked by many sites).
+    # Only record the URL and capture timestamp for later reference — do not store page HTML.
+    product_store[product_id] = {
+        "url": decoded_url,
+        "capturedAt": datetime.utcnow().isoformat() + "Z",
+    }
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/product/{product_id}")
+async def get_product(product_id: str):
+    record = product_store.get(product_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return record
 
 # --- Shared Schemas ---
 class Memberships(BaseModel):
@@ -230,8 +283,28 @@ async def send_message(payload: MessageRequest = Body(...)):
             from .openai_client import OpenAIClient
 
         client = OpenAIClient()
+
+        # Include recent product capture history as additional context for the model.
+        # Limit to the most recent 10 entries to avoid sending excessive data.
+        recent_items = list(product_store.items())[-10:]
+        if recent_items:
+            product_history_lines = []
+            for pid, rec in recent_items:
+                # rec currently stores only url and capturedAt (no HTML), so include those.
+                product_history_lines.append(f"ProductID={pid}; URL={rec.get('url')}; capturedAt={rec.get('capturedAt')}")
+            product_history = "\n".join(product_history_lines)
+        else:
+            product_history = "No product history available."
+
+        # Debug: print product history state for troubleshooting
+        print(f"[product_history] count={len(recent_items)}")
+        print(f"[product_history] entries:\n{product_history}")
+
+        # Add the product history to the user's message so the model has that context.
+        user_message_with_product_context = f"{user_text}\n\nProduct history (most recent items):\n{product_history}"
+
         ai_reply = client.chat_completion(
-            user_message=user_text,
+            user_message=user_message_with_product_context,
             system_instruction="You are a helpful assistant.",
             max_tokens=512,
             temperature=1.0,
