@@ -6,6 +6,9 @@ from typing import List, Optional, Dict
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+import httpx
+import time
+from urllib.parse import urlparse, parse_qs
 
 # Load environment variables from backend/.env so AZURE_OPENAI_* values are available
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
@@ -21,8 +24,9 @@ origins = [
 ]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Instead of specific origins, allow all for demo purposes
-    allow_credentials=False,
+    allow_origins=["https://www.bestbuy.com"],
+    allow_origin_regex=r"^http://localhost:\\d+$",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -38,8 +42,17 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         else:
             response: Response = await call_next(request)
 
-        # Only add CORS headers if an Origin header was provided
-        if origin:
+        # Only add CORS headers if an Origin header was provided and it's allowed
+        def origin_allowed(o: Optional[str]) -> bool:
+            if not o:
+                return False
+            if o == "https://www.bestbuy.com":
+                return True
+            if o.startswith("http://localhost:"):
+                return True
+            return False
+
+        if origin and origin_allowed(origin):
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
             response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
@@ -49,6 +62,9 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(DynamicCORSMiddleware)
+
+# In-memory store for fetched product pages
+PRODUCTS: Dict[str, Dict] = {}
 
 # --- Shared Schemas ---
 class Memberships(BaseModel):
@@ -230,8 +246,19 @@ async def send_message(payload: MessageRequest = Body(...)):
             from .openai_client import OpenAIClient
 
         client = OpenAIClient()
+        # If we have any fetched products, use the most-recently-added one
+        if PRODUCTS:
+            # get the last-inserted key from the dict (preserved insertion order in Python 3.7+)
+            last_product_id = next(reversed(PRODUCTS))
+            prod = PRODUCTS[last_product_id]
+            print(f"[send_message] using product_id={last_product_id} url={prod.get('url')}")
+            # build a short prompt that includes the product URL and a snippet of HTML
+            html_snippet = (prod.get('html') or '')[:1000]
+            prompt = f"Query:\n{user_text}\n\nProduct:{prod.get('url')}\n\nHTML_SNIPPET:{html_snippet}"
+        else:
+            prompt = user_text
         ai_reply = client.chat_completion(
-            user_message=user_text,
+            user_message=prompt,
             system_instruction="You are a helpful assistant.",
             max_tokens=512,
             temperature=1.0,
@@ -295,6 +322,46 @@ async def send_message(payload: MessageRequest = Body(...)):
             "channel": "chat"
         }
     }
+
+# Track a pageview. Expects JSON with an `originalUrl` that contains
+# a query parameter `url` whose value is the Basalt product page URL.
+@app.post("/track/pageview")
+async def track_pageview(request: Request):
+    data = await request.json()
+    original_url = data.get("originalUrl")
+    if not original_url:
+        return {"status": "ignored", "reason": "missing originalUrl"}
+
+    parsed = urlparse(original_url)
+    qs = parse_qs(parsed.query)
+    product_url = qs.get("url", [None])[0]
+
+    if not product_url:
+        return {"status": "ignored", "reason": "no url param"}
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(product_url, timeout=10.0)
+
+        product_id = product_url.rstrip("/").split("/")[-1]
+        PRODUCTS[product_id] = {
+            "url": product_url,
+            "timestamp": time.time(),
+            "html": resp.text,
+        }
+        print(f"[track_pageview] saved product_id={product_id} url={product_url} timestamp={PRODUCTS[product_id]['timestamp']}")
+
+        return {"status": "ok", "product_id": product_id}
+    except Exception as ex:
+        return {"status": "error", "error": str(ex)}
+
+
+@app.get("/product/{product_id}")
+async def get_product(product_id: str):
+    record = PRODUCTS.get(product_id)
+    if not record:
+        return {"error": "not found"}
+    return record
 
 @app.get("/health")
 async def health():
