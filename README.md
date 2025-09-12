@@ -45,8 +45,20 @@ npm run build
 
 ```bash
 # Create and activate virtual environment
+
+# Windows (cmd / PowerShell)
 python -m venv .venv
+# On Windows (cmd):
 .venv\Scripts\activate
+# On Windows (PowerShell):
+# .venv\Scripts\Activate.ps1
+
+# Ubuntu / WSL / Linux / macOS
+# (If using Ubuntu/WSL you may need to install the venv package first)
+# sudo apt update
+# sudo apt install -y python3 python3-venv python3-pip
+python3 -m venv .venv
+source .venv/bin/activate
 
 # Install backend dependencies
 pip install -r backend/requirements.txt
@@ -459,6 +471,14 @@ Check if the API is running.
   "status": "ok"
 }
 ```
+
+## Request Forwarding
+
+For an end-to-end integrated demo. Import rules using the Requestly Chromium extension. Steps:
+
+1. Install the Requestly extension.
+2. Click on https://app.requestly.io/rules#sharedList/88153b6c65f54d29aafcb3d2a7c781ee-requestly_shared_list_12_09_2025 to import the rules.
+3. Enable all rules and refresh the page to apply the rules.
 
 ## Customization
 
